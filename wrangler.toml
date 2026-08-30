@@ -4,4 +4,4 @@ compatibility_date = "2026-08-30"
 
 [[kv_namespaces]]
 binding = "TOTP_KV"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "29137b4294e144388830d5eac5f64606"
