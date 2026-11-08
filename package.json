@@ -1,14 +1,15 @@
 {
   "name": "tiktok-downloader-worker",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create tiktok-api-admin",
+    "db:migrate:local": "wrangler d1 migrations apply tiktok-api-admin --local",
+    "db:migrate:remote": "wrangler d1 migrations apply tiktok-api-admin --remote",
     "test": "node --test"
   },
-  "devDependencies": {
-    "wrangler": "^4.36.0"
-  }
+  "devDependencies": { "wrangler": "^4.36.0" }
 }
