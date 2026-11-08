@@ -1,0 +1,3 @@
+# Copy this file to .dev.vars for local development.
+# Never commit the real key or .dev.vars.
+SAVEAPI_KEY="sk_live_replace_me"
