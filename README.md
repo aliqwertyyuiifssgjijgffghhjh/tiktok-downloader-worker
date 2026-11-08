@@ -1,173 +1,28 @@
-# TikTok Downloader API — Cloudflare Worker
+# TikTok Downloader Worker — Multi-provider v2
 
-A small backend API for a TikTok downloader website. It validates TikTok URLs and calls SaveAPI server-side. The SaveAPI key is stored as a Cloudflare Worker secret and is never sent to the browser.
+Cloudflare Worker backend with SaveAPI + Yoinku adapters, sequential provider failover, multiple authorized credentials per provider, AES-GCM encrypted D1 storage, admin dashboard, usage/error history, cooldowns, URL validation, CORS and rate limiting.
 
-## What it does
+## Deploy
+1. Install and authenticate: `npm install && npx wrangler login`.
+2. Create D1: `npm run db:create`; copy the returned ID into `wrangler.toml`.
+3. Apply schema: `npm run db:migrate:remote`.
+4. Set secrets: `npx wrangler secret put ADMIN_TOKEN` and `npx wrangler secret put KEY_ENCRYPTION_SECRET`. Use different strong random secrets; encryption secret must be 32+ characters and backed up safely.
+5. Set `ALLOWED_ORIGINS` to your exact website origin(s) in wrangler.toml.
+6. Deploy: `npm run deploy`.
+7. Visit `https://YOUR-WORKER.workers.dev/admin`, enter ADMIN_TOKEN, and add provider keys.
 
-- `GET /api/health` — health check.
-- `POST /api/download` — accepts `{ "url": "https://www.tiktok.com/..." }`.
-- Allows TikTok's common full and short-link hosts only.
-- Calls `https://api.saveapi.org/v1/download` using Bearer authentication.
-- Returns sanitized metadata and HTTPS media URLs.
-- Maps common provider errors and uses a 25-second upstream timeout.
-- Supports exact-origin CORS configuration.
-- Includes an approximate Cloudflare per-IP rate limit (10 requests per 60 seconds); shared IPs may share this limit.
+## Endpoints
+- GET /api/health
+- POST /api/download with JSON body { "url": "https://www.tiktok.com/@creator/video/..." }
+- GET /admin
+- Admin APIs under /admin/api/* require X-Admin-Token.
 
-This backend returns provider-hosted media URLs. It does not proxy, store, or re-host video files. Download and use content only when you own it or have permission, and comply with TikTok and provider terms. A provider's API response is not proof that a particular reuse is authorized.
+## Provider integrations
+SaveAPI: GET https://api.saveapi.org/v1/download?url=... with Authorization: Bearer KEY. Docs: https://saveapi.org/en/docs/
+Yoinku: GET https://yoinku.com/api/v1/info?url=..., then GET https://yoinku.com/api/v1/download?url=...&format=ID with x-api-key. Docs: https://yoinku.com/en/api
 
-## Requirements
+## Important
+Provider response formats and terms can change; live requests with your own API credentials are required to verify them. The backend records request counts and errors but does not claim to know providers' remaining account credits unless they expose a quota API. If a provider returns 429, that credential is cooled down and the request may fail over to a different provider; it does NOT cycle sibling credentials to bypass the same provider's limits. Use only credentials/accounts you are authorized to use and only download content you own or have permission to use. Private/deleted/restricted posts can fail.
 
-- Node.js 20+
-- A Cloudflare account
-- A SaveAPI account and API key
-- Wrangler CLI (installed through npm)
-
-## 1. Configure locally
-
-```bash
-npm install
-cp .dev.vars.example .dev.vars
-```
-
-Edit `.dev.vars` and replace the placeholder with your real SaveAPI key:
-
-```dotenv
-SAVEAPI_KEY="sk_live_your_real_key"
-```
-
-Do not commit `.dev.vars`, API keys, or secrets to GitHub.
-
-## 2. Configure your website origin
-
-Edit `wrangler.toml`:
-
-```toml
-[vars]
-ALLOWED_ORIGIN = "https://yourdomain.com"
-```
-
-For local testing, the default is `http://localhost:8787`. If your frontend runs on a different local port, update this value.
-
-## 3. Run locally
-
-```bash
-npm run dev
-```
-
-Health check:
-
-```bash
-curl http://localhost:8787/api/health
-```
-
-Test a public TikTok URL:
-
-```bash
-curl -X POST http://localhost:8787/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.tiktok.com/@creator/video/1234567890123456789"}'
-```
-
-Use a real public URL for an actual provider test. The example ID above is illustrative.
-
-## 4. Deploy to Cloudflare
-
-The project uses the Cloudflare Workers Rate Limiting binding and requires Wrangler 4.36.0 or later. The included limit is 10 requests per client IP per 60 seconds; Cloudflare documents this limiter as approximate and local to each Cloudflare location.
-
-Authenticate Wrangler:
-
-```bash
-npx wrangler login
-```
-
-Set the secret (this stores it in Cloudflare, not in Git):
-
-```bash
-npx wrangler secret put SAVEAPI_KEY
-```
-
-Paste your SaveAPI key when prompted. Then deploy:
-
-```bash
-npm run deploy
-```
-
-Cloudflare will provide a `workers.dev` URL. Test:
-
-```bash
-curl https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/api/health
-```
-
-## 5. Connect your custom domain
-
-In Cloudflare Dashboard:
-1. Open **Workers & Pages**.
-2. Select `tiktok-downloader-api`.
-3. Open **Settings → Domains & Routes**.
-4. Add a route or custom domain such as `api.yourdomain.com`.
-5. Set `ALLOWED_ORIGIN` to the exact frontend origin, such as `https://yourdomain.com`, and deploy again.
-
-Your frontend should call:
-
-```js
-const response = await fetch("https://api.yourdomain.com/api/download", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ url: tiktokUrl })
-});
-const data = await response.json();
-```
-
-## 6. Add to GitHub
-
-Create a new empty GitHub repository, then run these commands from this project directory:
-
-```bash
-git init
-git add .
-git commit -m "Initial TikTok downloader Worker backend"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
-git push -u origin main
-```
-
-Keep `.dev.vars` out of Git. The `.gitignore` already excludes it.
-
-## API response
-
-Success returns a simplified structure:
-
-```json
-{
-  "success": true,
-  "platform": "tiktok",
-  "type": "video",
-  "title": "Video caption",
-  "author": "Creator",
-  "thumbnail": "https://...",
-  "duration": 15,
-  "medias": [
-    {
-      "type": "video",
-      "ext": "mp4",
-      "size_mb": 3.2,
-      "url": "https://..."
-    }
-  ],
-  "formats": [],
-  "recommended_format": "nowm"
-}
-```
-
-The exact fields depend on what the provider returns for the source post. TikTok photo posts may return image media rather than a video.
-
-## Production checklist
-
-Before making the service public:
-- Confirm SaveAPI's current terms permit your intended use and redistribution.
-- Configure an exact `ALLOWED_ORIGIN`; do not use `*` for a public production site.
-- Review the included rate-limit binding. It is approximate and per Cloudflare location; users behind the same public IP may share a limit. Change the `namespace_id` to a positive integer unique in your Cloudflare account. Consider additional WAF rules for abuse.
-- Set provider spending/credit alerts where available.
-- Monitor Worker logs and provider errors.
-- Consider a second provider only after testing its terms, quota, response schema, and reliability.
-- Do not promise that every TikTok post is downloadable. Private, deleted, restricted, or unavailable posts will fail.
+## Security
+Secrets are never committed to GitHub. Provider keys are AES-GCM encrypted before D1 storage. If KEY_ENCRYPTION_SECRET is lost, encrypted keys cannot be decrypted. Keep admin access private; add Cloudflare Access/WAF protections for /admin and rate-limit public endpoints. Configure production origins exactly.
