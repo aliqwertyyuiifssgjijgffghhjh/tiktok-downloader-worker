@@ -3,14 +3,15 @@ main = "src/index.js"
 compatibility_date = "2026-11-08"
 workers_dev = true
 
+[[d1_databases]]
+binding = "DB"
+database_name = "tiktok-api-admin"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
 [vars]
-# Set this to your exact website origin after deployment, e.g. https://example.com
-ALLOWED_ORIGIN = "http://localhost:8787"
+ALLOWED_ORIGINS = "http://localhost:8787"
 
-# Set SAVEAPI_KEY as a Worker secret; never put it in this file.
-
-# Approximate abuse protection: 10 download requests per client IP per 60 seconds.
-# Choose a positive integer namespace_id that is unique in your Cloudflare account.
 [[ratelimits]]
 name = "DOWNLOAD_LIMITER"
 namespace_id = "875321"
